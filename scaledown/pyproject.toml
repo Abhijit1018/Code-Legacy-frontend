@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scaledown"
+version = "0.1.0"
+description = "A Context Optimization Package"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+  { name="Soham Chatterjee", email="soham@scaledown.ai" },
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "requests>=2.31.0",
+    "pydantic>=2.0.0",
+]
+
+# --- Optional dependencies start here ---
+[project.optional-dependencies]
+semantic = [
+    "sentence-transformers>=3.0.0",
+    "faiss-cpu>=1.7.0",
+    "numpy>=1.20.0"
+]
+haste = [
+    "HasteContext>=0.2.4",
+]
+
+[project.urls]
+Homepage = "https://scaledown.ai"
+Issues = "https://github.com/scaledown-team/scaledown"
