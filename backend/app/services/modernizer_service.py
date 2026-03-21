@@ -16,6 +16,9 @@ from backend.app.schemas.responses import (
     StatsResponse,
     ResultsResponse,
     LLMInfoResponse,
+    FileResultResponse,
+    FileValidationResponse,
+    WorkflowResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -143,9 +146,48 @@ class ModernizerService:
     @staticmethod
     def _to_response(result) -> ModernizationResponse:
         d = ResultFormatter.to_dict(result)
+
+        # Build per-file results with validation
+        per_file_responses = []
+        for fr in d["results"].get("per_file_results", []):
+            val = None
+            if fr.get("validation"):
+                val = FileValidationResponse(**fr["validation"])
+            per_file_responses.append(FileResultResponse(
+                file_path=fr.get("file_path", ""),
+                program_id=fr.get("program_id", ""),
+                python_code=fr.get("python_code", ""),
+                go_code=fr.get("go_code", ""),
+                summary=fr.get("summary", ""),
+                documentation=fr.get("documentation", ""),
+                original_code=fr.get("original_code", ""),
+                error=fr.get("error", ""),
+                validation=val,
+            ))
+
+        # Build validation report
+        validation_report = [
+            FileValidationResponse(**v) for v in d.get("validation_report", [])
+        ]
+
+        # Build workflow responses
+        workflows = [
+            WorkflowResponse(**w) if isinstance(w, dict) else WorkflowResponse()
+            for w in d.get("workflows", [])
+        ]
+
+        results_data = d["results"].copy()
+        results_data["per_file_results"] = per_file_responses
+
         return ModernizationResponse(
             repo_url=d["repo_url"],
             stats=StatsResponse(**d["stats"]),
-            results=ResultsResponse(**d["results"]),
+            results=ResultsResponse(**results_data),
             llm=LLMInfoResponse(**d["llm"]),
+            repo_philosophy=d.get("repo_philosophy", {}),
+            dependency_graph=d.get("dependency_graph", {}),
+            file_mapping=d.get("file_mapping", {}),
+            validation_report=validation_report,
+            workflows=workflows,
         )
+

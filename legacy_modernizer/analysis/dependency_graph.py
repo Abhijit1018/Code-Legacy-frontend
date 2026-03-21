@@ -143,3 +143,195 @@ class DependencyGraph:
     @property
     def node_count(self) -> int:
         return len(self._nodes)
+
+
+# ======================================================================
+# File-level dependency graph  (Phase 1 — §1.1)
+# ======================================================================
+
+@dataclass
+class FileNode:
+    """A node in the file-level dependency graph."""
+    file_path: str
+    language: str
+    size_bytes: int = 0
+    role_type: str = ""       # "entry_point", "library", "config", "test", etc.
+
+
+@dataclass
+class FileEdge:
+    """A typed edge between two files."""
+    source: str               # file_path of source
+    target: str               # file_path of target
+    edge_type: str            # imports, calls, inherits, reads_config, writes_output
+
+
+class FileDependencyGraph:
+    """
+    Build a whole-repository **file-level** dependency graph.
+
+    Nodes = files, edges = typed cross-file relationships.
+    Supports topological sorting for leaf-first translation ordering.
+    """
+
+    def __init__(self) -> None:
+        self._nodes: dict[str, FileNode] = {}
+        self._edges: list[FileEdge] = []
+        # Adjacency: file_path → list of (target_path, edge_type)
+        self._adj: dict[str, list[tuple[str, str]]] = defaultdict(list)
+        # Reverse adjacency for callers
+        self._rev: dict[str, list[tuple[str, str]]] = defaultdict(list)
+
+    # ------------------------------------------------------------------
+    # Graph construction
+    # ------------------------------------------------------------------
+
+    def add_file(self, file_path: str, language: str,
+                 size_bytes: int = 0, role_type: str = "") -> None:
+        """Register a file node."""
+        self._nodes[file_path] = FileNode(
+            file_path=file_path, language=language,
+            size_bytes=size_bytes, role_type=role_type,
+        )
+
+    def add_edge(self, source: str, target: str, edge_type: str) -> None:
+        """Add a typed directed edge between two files."""
+        edge = FileEdge(source=source, target=target, edge_type=edge_type)
+        self._edges.append(edge)
+        self._adj[source].append((target, edge_type))
+        self._rev[target].append((source, edge_type))
+
+    def build_from_parse_results(self, parse_results: list[ParseResult],
+                                  file_language_map: dict[str, str] | None = None) -> None:
+        """
+        Populate edges from parsed cross-file references.
+
+        Steps:
+        1. Build an index of which symbols are defined in which files.
+        2. For each file's imports/calls/inheritance, resolve target files.
+        """
+        # Index: symbol_name → file_path
+        symbol_index: dict[str, str] = {}
+        class_index: dict[str, str] = {}
+
+        for pr in parse_results:
+            for fn in pr.functions:
+                symbol_index[fn.name] = pr.file_path
+            for cls in pr.classes:
+                class_index[cls] = pr.file_path
+
+        # Wire edges
+        for pr in parse_results:
+            # Import-based edges
+            for imp in pr.imports:
+                # Try to resolve the import to a file in the repo
+                short_name = imp.split(".")[-1]
+                target = symbol_index.get(short_name) or class_index.get(short_name)
+                if target and target != pr.file_path:
+                    self.add_edge(pr.file_path, target, "imports")
+
+            # Cross-file function calls
+            for call in pr.external_calls:
+                target = symbol_index.get(call)
+                if target and target != pr.file_path:
+                    self.add_edge(pr.file_path, target, "calls")
+
+            # Inheritance edges
+            for base in pr.inherited_classes:
+                target = class_index.get(base)
+                if target and target != pr.file_path:
+                    self.add_edge(pr.file_path, target, "inherits")
+
+            # Config reads
+            for cfg in pr.config_reads:
+                if cfg in self._nodes:
+                    self.add_edge(pr.file_path, cfg, "reads_config")
+
+    # ------------------------------------------------------------------
+    # Queries
+    # ------------------------------------------------------------------
+
+    def get_dependencies(self, file_path: str) -> list[str]:
+        """Return all files that *file_path* depends on (outgoing edges)."""
+        return list(set(t for t, _ in self._adj.get(file_path, [])))
+
+    def get_dependents(self, file_path: str) -> list[str]:
+        """Return all files that depend on *file_path* (incoming edges)."""
+        return list(set(s for s, _ in self._rev.get(file_path, [])))
+
+    def topological_sort(self) -> list[str]:
+        """
+        Return files in **leaf-first** order (topological sort).
+
+        Files with no dependencies come first. Files that depend
+        on others come later. This is the correct order for translation.
+        """
+        in_degree: dict[str, int] = {f: 0 for f in self._nodes}
+        for edge in self._edges:
+            if edge.target in in_degree:
+                in_degree[edge.target] = in_degree.get(edge.target, 0)
+                # We need reverse: files with no dependents translated first
+                # Actually, for leaf-first: files with no dependencies first
+                pass
+
+        # Kahn's algorithm — leaf-first means "no outgoing deps first"
+        out_degree: dict[str, int] = {f: 0 for f in self._nodes}
+        reverse_adj: dict[str, list[str]] = defaultdict(list)
+        for edge in self._edges:
+            if edge.source in self._nodes and edge.target in self._nodes:
+                out_degree[edge.source] = out_degree.get(edge.source, 0) + 1
+                reverse_adj[edge.target].append(edge.source)
+
+        queue: deque[str] = deque()
+        for f, deg in out_degree.items():
+            if deg == 0:
+                queue.append(f)
+
+        result: list[str] = []
+        while queue:
+            node = queue.popleft()
+            result.append(node)
+            # For each file that depends on this one, decrement out-degree
+            for dependent in reverse_adj.get(node, []):
+                out_degree[dependent] -= 1
+                if out_degree[dependent] == 0:
+                    queue.append(dependent)
+
+        # Add any remaining files (cycles)
+        for f in self._nodes:
+            if f not in result:
+                result.append(f)
+
+        return result
+
+    # ------------------------------------------------------------------
+    # Serialisation
+    # ------------------------------------------------------------------
+
+    def to_adjacency_json(self) -> dict:
+        """Serialize the graph as a JSON adjacency list."""
+        adj: dict[str, dict] = {}
+        for file_path, node in self._nodes.items():
+            edges_out = [
+                {"target": t, "type": et}
+                for t, et in self._adj.get(file_path, [])
+            ]
+            adj[file_path] = {
+                "language": node.language,
+                "size_bytes": node.size_bytes,
+                "role_type": node.role_type,
+                "edges": edges_out,
+            }
+        return adj
+
+    @property
+    def file_count(self) -> int:
+        return len(self._nodes)
+
+    @property
+    def edge_count(self) -> int:
+        return len(self._edges)
+
+    @property
+    def all_files(self) -> list[str]:
+        return list(self._nodes.keys())

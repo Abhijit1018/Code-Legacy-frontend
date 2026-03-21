@@ -1,11 +1,12 @@
 import React, { useState } from "react";
 
 const LLM_MODELS = [
-  { value: "deepseek/deepseek-chat-v3-0324", label: "DeepSeek V3 (default)" },
-  { value: "openai/gpt-4o", label: "GPT-4o" },
-  { value: "anthropic/claude-sonnet-4", label: "Claude Sonnet 4" },
-  { value: "google/gemini-2.5-pro-preview-06-05", label: "Gemini 2.5 Pro" },
-  { value: "meta-llama/llama-3.1-70b-instruct", label: "Llama 3.1 70B" },
+  { value: "meta-llama/llama-3.3-70b-instruct:free", label: "Llama 3.3 70B (FREE - Best)" },
+  { value: "qwen/qwen-2.5-72b-instruct:free", label: "Qwen 2.5 72B (FREE)" },
+  { value: "google/gemini-2.0-flash-exp:free", label: "Gemini 2.0 Flash (Check status)" },
+  { value: "deepseek/deepseek-chat", label: "DeepSeek Chat (Paid)" },
+  { value: "openai/gpt-4o", label: "GPT-4o (Paid)" },
+  { value: "anthropic/claude-3.5-sonnet", label: "Claude 3.5 Sonnet (Paid)" },
 ];
 
 /**
@@ -23,7 +24,7 @@ export default function RepoInput({ onSubmit, loading = false }) {
 
   // Advanced options
   const [compressionRate, setCompressionRate] = useState(0.5);
-  const [llmModel, setLlmModel] = useState("deepseek/deepseek-chat-v3-0324");
+  const [llmModel, setLlmModel] = useState("meta-llama/llama-3.3-70b-instruct:free");
   const [temperature, setTemperature] = useState(0.2);
   const [maxTokens, setMaxTokens] = useState(4096);
   const [removeComments, setRemoveComments] = useState(true);

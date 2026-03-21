@@ -88,33 +88,51 @@ class OpenRouterClient:
 
         logger.info("Calling OpenRouter model=%s", self.model)
 
-        try:
-            resp = requests.post(
-                OPENROUTER_CHAT_URL,
-                headers=headers,
-                json=payload,
-                timeout=120,
-            )
-        except requests.exceptions.ConnectionError:
-            raise RuntimeError("OpenRouter API is unreachable. Check your network.")
-        except requests.exceptions.Timeout:
-            raise RuntimeError("OpenRouter request timed out (120s). Try a smaller context.")
+        # Handle HTTP errors with clear messages (Phase 6: Added retry for 429)
+        import time
+        max_retries = 3
+        retry_delay = 2 # seconds
+        
+        for attempt in range(max_retries + 1):
+            try:
+                resp = requests.post(
+                    OPENROUTER_CHAT_URL,
+                    headers=headers,
+                    json=payload,
+                    timeout=180,
+                )
+                
+                if resp.status_code == 429:
+                    if attempt < max_retries:
+                        wait_time = retry_delay * (2 ** attempt)
+                        logger.warning("Rate limit hit (429). Waiting %ds before retry %d/%d...", wait_time, attempt + 1, max_retries)
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        raise RuntimeError("OpenRouter rate limit exceeded after retries. Please wait and try again.")
 
-        # Handle HTTP errors with clear messages
-        if resp.status_code == 401:
-            raise ValueError(
-                "OpenRouter API key is invalid. Please check OPENROUTER_API_KEY "
-                "in your .env file."
-            )
-        if resp.status_code == 429:
-            raise RuntimeError(
-                "OpenRouter rate limit exceeded. Please wait and try again."
-            )
-        if resp.status_code >= 400:
-            detail = resp.text[:300]
-            raise RuntimeError(
-                f"OpenRouter request failed (HTTP {resp.status_code}): {detail}"
-            )
+                if resp.status_code == 401:
+                    raise ValueError(
+                        "OpenRouter API key is invalid. Please check OPENROUTER_API_KEY "
+                        "in your .env file."
+                    )
+                if resp.status_code >= 400:
+                    detail = resp.text[:300]
+                    raise RuntimeError(
+                        f"OpenRouter request failed (HTTP {resp.status_code}): {detail}"
+                    )
+                
+                # If we get here, it's a 200 OK
+                break
+                
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as exc:
+                if attempt < max_retries:
+                    wait_time = retry_delay * (2 ** attempt)
+                    logger.warning("Network error (%s). Retrying in %ds...", exc, wait_time)
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    raise RuntimeError(f"OpenRouter API unreachable after {max_retries} retries: {exc}")
 
         data = resp.json()
 

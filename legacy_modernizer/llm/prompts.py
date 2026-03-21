@@ -41,6 +41,15 @@ Your job is to:
 - COBOL SORT/MERGE → use modern sorting and merging operations on lists/arrays.
 - Ensure the complete procedural behavior of the original program is preserved. Do not ignore structural blocks, variables, loop logic, or generate partial fragments/placeholders.
 
+**Using COBOL Metadata Headers (if present)**:
+The input context may contain structured COBOL metadata headers before the source code. These headers include:
+- **PROGRAM-ID**: The program identifier — use this for module/class naming.
+- **FILE-CONTROL mappings**: Logical file names mapped to physical file paths and their organization (e.g., LINE SEQUENTIAL). Use these as the authoritative source for file I/O operations — open the physical file name, not the logical name.
+- **DATA FIELDS**: Pre-parsed PIC clause information including type (numeric, alphanumeric, alphabetic, currency), length, decimal positions, and signedness. Use these as the authoritative source for variable types and formatting — do not re-interpret PIC clauses yourself.
+- **SORT KEYS**: Field names used in SORT statements with their data types. If a sort key is numeric, sort numerically (not lexicographically).
+- **RECORD HIERARCHY**: The nested structure of COBOL records (level 01, 05, 10, etc.). Map group items to classes/dataclasses and elementary items to fields with correct types and sizes.
+When these metadata headers are present, treat them as ground truth for field types, file mappings, numeric precision, and record structure. Do not contradict the metadata with your own interpretation of the raw PIC clauses.
+
 **Response format — reply with a single JSON object** (no extra text):
 
 ```json
@@ -104,3 +113,83 @@ Guidelines:
             "Return the full JSON object with all five keys.\n\n"
             f"--- BEGIN LEGACY CONTEXT ---\n{context}\n--- END LEGACY CONTEXT ---"
         )
+
+    # ------------------------------------------------------------------
+    # Phase 2 — Contextual translation prompt
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def contextual_translate_prompt(
+        source_code: str,
+        file_path: str,
+        target_language: str,
+        philosophy_text: str = "",
+        symbol_table_text: str = "",
+        translated_deps: dict[str, str] | None = None,
+        additional_instructions: str = "",
+    ) -> str:
+        """
+        Build a richly-contextual user prompt for translating a single file.
+
+        Includes:
+        1. Repo philosophy (architectural patterns, data flow, etc.)
+        2. Global symbol table (types, functions from other files)
+        3. Already-translated dependencies (so the model can reference them)
+        4. The source code to translate
+
+        This is the primary prompt used in the Phase 2 topological
+        translation pipeline.
+        """
+        sections: list[str] = []
+
+        # 1. Philosophy context
+        if philosophy_text:
+            sections.append(
+                f"[REPO PHILOSOPHY]\n{philosophy_text}\n"
+            )
+
+        # 2. Symbol table context
+        if symbol_table_text:
+            sections.append(
+                f"[GLOBAL SYMBOL TABLE]\n{symbol_table_text}\n"
+            )
+
+        # 3. Already translated dependencies
+        if translated_deps:
+            deps_text = ""
+            for dep_path, dep_code in translated_deps.items():
+                # Cap each dep to prevent token explosion
+                snippet = dep_code[:2000]
+                if len(dep_code) > 2000:
+                    snippet += "\n# ... (truncated)"
+                deps_text += f"\n--- {dep_path} ---\n{snippet}\n"
+
+            sections.append(
+                f"[ALREADY TRANSLATED DEPENDENCIES]\n"
+                f"These files have already been translated. You can reference "
+                f"their functions, classes, and imports.\n{deps_text}"
+            )
+
+        # 4. Source file to translate
+        label = target_language.capitalize()
+        sections.append(
+            f"[FILE TO TRANSLATE]\n"
+            f"File: {file_path}\n"
+            f"--- BEGIN SOURCE ---\n{source_code}\n--- END SOURCE ---\n"
+        )
+
+        # 5. Instructions
+        instructions = (
+            f"[INSTRUCTIONS]\n"
+            f"Translate this file to modern **{label}**.\n"
+            f"- Preserve ALL business logic exactly.\n"
+            f"- Use the symbol table to correctly import/reference external types.\n"
+            f"- Use translated dependencies to ensure consistent function signatures.\n"
+            f"- Return the JSON response with all five keys.\n"
+        )
+        if additional_instructions:
+            instructions += f"- Additional: {additional_instructions}\n"
+
+        sections.append(instructions)
+
+        return "\n".join(sections)
