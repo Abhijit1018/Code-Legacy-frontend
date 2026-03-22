@@ -5,7 +5,7 @@
  * expose backend URLs or API keys to the browser.
  */
 
-const BASE = "/api";
+const BASE = import.meta.env.VITE_API_URL || "/api";
 
 /**
  * POST /api/analyze-repo
@@ -19,7 +19,7 @@ export async function analyzeRepo(repoUrl, branch = "main", targetLanguage = "py
       branch,
       target_language: targetLanguage,
       compression_rate: options.compressionRate ?? 0.5,
-      llm_model: options.llmModel ?? "deepseek/deepseek-chat-v3-0324",
+      llm_model: options.llmModel ?? "nvidia/nemotron-3-super-120b-a12b:free",
       temperature: options.temperature ?? 0.2,
       max_tokens: options.maxTokens ?? 4096,
       remove_comments: options.removeComments ?? true,
@@ -50,7 +50,7 @@ export async function convertRepo(
       branch,
       target_language: targetLanguage,
       compression_rate: compressionRate,
-      llm_model: rest.llmModel ?? "deepseek/deepseek-chat-v3-0324",
+      llm_model: rest.llmModel ?? "nvidia/nemotron-3-super-120b-a12b:free",
       temperature: rest.temperature ?? 0.2,
       max_tokens: rest.maxTokens ?? 4096,
       remove_comments: rest.removeComments ?? true,
@@ -77,7 +77,7 @@ export async function analyzeSnippet(code, language = "cobol", targetLanguage = 
       code,
       language,
       target_language: targetLanguage,
-      llm_model: options.llmModel ?? "deepseek/deepseek-chat-v3-0324",
+      llm_model: options.llmModel ?? "nvidia/nemotron-3-super-120b-a12b:free",
       temperature: options.temperature ?? 0.2,
       max_tokens: options.maxTokens ?? 4096,
       compression_rate: options.compressionRate ?? 0.5,

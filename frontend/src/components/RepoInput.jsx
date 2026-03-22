@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 
 const LLM_MODELS = [
+  { value: "nvidia/nemotron-3-super-120b-a12b:free", label: "NVIDIA Nemotron 3 120B (FREE)" },
+  { value: "z-ai/glm-4.5-air:free", label: "GLM 4.5 Air (FREE)" },
   { value: "meta-llama/llama-3.3-70b-instruct:free", label: "Llama 3.3 70B (FREE - Best)" },
   { value: "qwen/qwen-2.5-72b-instruct:free", label: "Qwen 2.5 72B (FREE)" },
   { value: "google/gemini-2.0-flash-exp:free", label: "Gemini 2.0 Flash (Check status)" },
@@ -22,9 +24,8 @@ export default function RepoInput({ onSubmit, loading = false }) {
   const [targetLanguage, setTargetLanguage] = useState("python");
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // Advanced options
   const [compressionRate, setCompressionRate] = useState(0.5);
-  const [llmModel, setLlmModel] = useState("meta-llama/llama-3.3-70b-instruct:free");
+  const [llmModel, setLlmModel] = useState("nvidia/nemotron-3-super-120b-a12b:free");
   const [temperature, setTemperature] = useState(0.2);
   const [maxTokens, setMaxTokens] = useState(4096);
   const [removeComments, setRemoveComments] = useState(true);
