@@ -213,19 +213,35 @@ export default function ResultsView({ data }) {
           {/* Side-by-side terminals */}
           <div className="code-comparison">
             <TerminalTile title={cobolFileName} language="COBOL" langClass="cobol" code={originalCode} />
-            <TerminalTile title={pythonFileName} language="Python" langClass="python" code={pythonCode} />
-          </div>
-
-          {/* Go code (if available) */}
-          {goCode && (
-            <div className="code-comparison" style={{ gridTemplateColumns: "1fr" }}>
+            {pythonCode && (
+              <TerminalTile title={pythonFileName} language="Python" langClass="python" code={pythonCode} />
+            )}
+            {!pythonCode && goCode && (
               <TerminalTile
                 title={hasPerFile && selectedFile
                   ? `${(selectedFile.program_id || "output").toLowerCase()}.go`
                   : "output.go"
                 }
                 language="Go"
-                langClass="python"
+                langClass="go"
+                code={goCode}
+              />
+            )}
+            {!pythonCode && !goCode && (
+              <TerminalTile title={pythonFileName} language="Python" langClass="python" code={pythonCode} />
+            )}
+          </div>
+
+          {/* Go code (if Python also available) */}
+          {pythonCode && goCode && (
+            <div className="code-comparison" style={{ gridTemplateColumns: "1fr", marginTop: "1rem" }}>
+              <TerminalTile
+                title={hasPerFile && selectedFile
+                  ? `${(selectedFile.program_id || "output").toLowerCase()}.go`
+                  : "output.go"
+                }
+                language="Go"
+                langClass="go"
                 code={goCode}
               />
             </div>

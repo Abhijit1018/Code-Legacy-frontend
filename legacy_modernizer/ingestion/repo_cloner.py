@@ -9,8 +9,14 @@ import shutil
 import tempfile
 import subprocess
 import logging
+import stat
 from pathlib import Path
 from urllib.parse import urlparse
+
+def _remove_readonly(func, path, excinfo):
+    """Clear the readonly bit and reattempt the removal."""
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +52,7 @@ class RepoCloner:
         # Remove stale clone if present
         if dest.exists():
             logger.info("Removing existing clone at %s", dest)
-            shutil.rmtree(dest)
+            shutil.rmtree(dest, onerror=_remove_readonly)
 
         logger.info("Cloning %s (branch=%s) → %s", repo_url, branch, dest)
 
@@ -75,7 +81,7 @@ class RepoCloner:
     def cleanup(self, repo_path: Path) -> None:
         """Remove a previously cloned repository."""
         if repo_path.exists():
-            shutil.rmtree(repo_path)
+            shutil.rmtree(repo_path, onerror=_remove_readonly)
             logger.info("Cleaned up %s", repo_path)
 
     # ------------------------------------------------------------------

@@ -37,7 +37,13 @@ class OpenRouterClient:
     Environment variable: OPENROUTER_API_KEY
     """
 
-    DEFAULT_MODEL = "deepseek/deepseek-chat-v3-0324"
+    DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
+
+    FALLBACK_MODELS = [
+        "z-ai/glm-4.5-air:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+        "qwen/qwen-2.5-72b-instruct:free",
+    ]
 
     def __init__(
         self,
@@ -92,26 +98,57 @@ class OpenRouterClient:
         import time
         max_retries = 3
         retry_delay = 2 # seconds
-        
-        for attempt in range(max_retries + 1):
+        models_to_try: list[str] = [self.model] + [m for m in self.FALLBACK_MODELS if m != self.model]
+        current_model_idx: int = 0
+        attempt: int = 0
+
+        while attempt <= max_retries:
+            # Update payload model for fallback
+            payload["model"] = models_to_try[current_model_idx]
+
             try:
+                # Add a timeout to prevent hanging forever
                 resp = requests.post(
-                    OPENROUTER_CHAT_URL,
+                    OPENROUTER_CHAT_URL, 
+                    json=payload, 
                     headers=headers,
-                    json=payload,
-                    timeout=180,
+                    timeout=180
                 )
-                
+
+                # Rate limit handling (HTTP 429)
                 if resp.status_code == 429:
-                    if attempt < max_retries:
-                        wait_time = retry_delay * (2 ** attempt)
-                        logger.warning("Rate limit hit (429). Waiting %ds before retry %d/%d...", wait_time, attempt + 1, max_retries)
-                        time.sleep(wait_time)
+                    # Try the next fallback model first (doesn't consume an attempt delay)
+                    if current_model_idx + 1 < len(models_to_try):
+                        current_model_idx += 1
+                        logger.warning(
+                            "OpenRouter rate limit hit. Falling back to %s",
+                            models_to_try[current_model_idx]
+                        )
+                        time.sleep(2)
                         continue
                     else:
-                        raise RuntimeError("OpenRouter rate limit exceeded after retries. Please wait and try again.")
+                        if attempt < max_retries:
+                            wait_time = retry_delay * (2 ** attempt)
+                            logger.warning(
+                                "All models ratelimited. OpenRouter 429. Retrying %d/%d in %ds...",
+                                attempt + 1, max_retries, wait_time
+                            )
+                            current_model_idx = 0  # Reset to first model
+                            time.sleep(wait_time)
+                            attempt += 1
+                            continue
+                        else:
+                            raise RuntimeError(f"OpenRouter rate limit exceeded after {max_retries} retries.")
 
-                if resp.status_code == 401:
+                resp.raise_for_status() # This will raise for 4xx/5xx errors
+
+                # If we get here, the request was successful (2xx)
+                break
+                
+            except requests.exceptions.RequestException as e:
+                # Authentication errors shouldn't be retried
+                if hasattr(e, 'response') and e.response is not None and e.response.status_code == 401:
+                    logger.error("OpenRouter authentication failed (401). Check API key.")
                     raise ValueError(
                         "OpenRouter API key is invalid. Please check OPENROUTER_API_KEY "
                         "in your .env file."

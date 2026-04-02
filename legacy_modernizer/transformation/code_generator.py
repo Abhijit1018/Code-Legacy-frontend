@@ -99,7 +99,7 @@ class CodeGenerator:
         self,
         scaledown_api_key: str | None = None,
         openrouter_api_key: str | None = None,
-        llm_model: str = "deepseek/deepseek-chat-v3-0324",
+        llm_model: str = "nvidia/nemotron-3-super-120b-a12b:free",
         compression_rate: float = 0.5,
         temperature: float = 0.2,
         max_tokens: int = 4096,
@@ -145,7 +145,7 @@ class CodeGenerator:
     # ------------------------------------------------------------------
 
     def analyze_repo(self, repo_url: str, branch: str = "main", target_language: str = "python",
-                     github_token: str = "", additional_instructions: str = "") -> ModernizationResult:
+                     github_token: str = "", additional_instructions: str = "") -> ModernizationResult:  # type: ignore[return]
         """
         Full pipeline: clone → analyse → compress → LLM → result.
         """
@@ -233,18 +233,18 @@ class CodeGenerator:
             if not source_code:
                 continue
 
-            file_result = FileConversionResult(file_path=file_path)
+            file_result = FileConversionResult(file_path=str(file_path))
 
             try:
                 # Get original raw source for display
-                file_result.original_code = original_code.get(file_path, source_code)
+                file_result.original_code = original_code.get(str(file_path), "") or source_code
 
                 # Extract PROGRAM-ID for naming
                 prog_match = _re.search(
                     r"PROGRAM-ID\.\s+([\w-]+)", file_result.original_code, _re.IGNORECASE,
                 )
                 file_result.program_id = (
-                    prog_match.group(1) if prog_match else Path(file_path).stem
+                    prog_match.group(1) if prog_match else Path(str(file_path)).stem
                 )
 
                 # Get dependencies that have already been translated
@@ -252,9 +252,9 @@ class CodeGenerator:
                 if analysis.file_dependency_graph:
                     dep_files = analysis.file_dependency_graph.get_dependencies(file_path)
                 translated_deps = {
-                    dep: translated_code[dep]
+                    dep: translated_code[dep]  # type: ignore[index]
                     for dep in dep_files
-                    if dep in translated_code
+                    if dep in translated_code  # type: ignore[operator]
                 }
 
                 # Build contextual prompt (Phase 2.2 — NEW)
@@ -278,7 +278,7 @@ class CodeGenerator:
                 if additional_instructions:
                     system += f"\n\nAdditional instructions from the user:\n{additional_instructions}"
 
-                llm_resp: LLMResponse = self.llm.generate(
+                llm_resp: LLMResponse = self.llm.generate(  # type: ignore[attr-defined]
                     system_prompt=system,
                     user_prompt=user_prompt,
                 )
@@ -287,7 +287,7 @@ class CodeGenerator:
                 file_result.go_code = llm_resp.go_code
                 file_result.summary = llm_resp.summary
                 file_result.documentation = llm_resp.documentation
-                total_tokens += llm_resp.tokens_used
+                total_tokens += llm_resp.tokens_used  # type: ignore[operator]
                 model_used = llm_resp.model_used
 
                 # Phase 2.3 — Post-translation validation with retry (NEW)
@@ -296,7 +296,7 @@ class CodeGenerator:
                     else llm_resp.go_code
                 )
                 if generated_code:
-                    validation = self.validator.validate(
+                    validation = self.validator.validate(  # type: ignore[attr-defined]
                         generated_code, target_language, file_path,
                     )
 
@@ -308,10 +308,10 @@ class CodeGenerator:
                             "Validation failed for %s (retry %d/%d)",
                             file_path, retry_count, MAX_VALIDATION_RETRIES,
                         )
-                        fix_prompt = self.validator.build_fix_prompt(
+                        fix_prompt = self.validator.build_fix_prompt(  # type: ignore[attr-defined]
                             generated_code, validation,
                         )
-                        fix_resp = self.llm.generate(
+                        fix_resp = self.llm.generate(  # type: ignore[attr-defined]
                             system_prompt=system,
                             user_prompt=fix_prompt,
                         )
@@ -341,12 +341,12 @@ class CodeGenerator:
                 # Track translated code for subsequent files
                 translated_output = file_result.python_code or file_result.go_code
                 if translated_output:
-                    translated_code[file_path] = translated_output
+                    translated_code[str(file_path)] = translated_output
 
                 # Generate new file path
                 ext = ".py" if target_language == "python" else ".go"
                 new_name = file_result.program_id.lower().replace("-", "_") + ext
-                file_mapping[file_path] = new_name
+                file_mapping[str(file_path)] = new_name
 
                 # Accumulate for combined output
                 if file_result.python_code:
@@ -393,7 +393,22 @@ class CodeGenerator:
         result.validation_results = all_validations
 
         # Combined outputs
-        result.summary = "\n\n".join(all_summaries) if all_summaries else "No programs detected."
+        if all_summaries:
+            result.summary = "\n\n".join(all_summaries)
+        elif scan.total_files == 0:
+            result.summary = (
+                "No supported source files were detected in the repository. "
+                "Supported extensions include .cbl/.cob, .java, .py, .go, .c/.cpp, and .f90."
+            )
+        elif per_file_results and not (all_python_parts or all_go_parts):
+            first_error = next((fr.error for fr in per_file_results if fr.error), "Unknown error")
+            result.summary = (
+                f"Detected {len(per_file_results)} source file(s), but conversion failed for all files. "
+                f"First error: {first_error}"
+            )
+        else:
+            result.summary = "No programs detected."
+
         result.python_code = "\n\n\n".join(all_python_parts)
         result.go_code = "\n\n\n".join(all_go_parts)
         result.documentation = "\n\n---\n\n".join(all_docs)

@@ -15,14 +15,18 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
+SCALEDOWN_ROOT = os.path.join(PROJECT_ROOT, "scaledown")
+if SCALEDOWN_ROOT not in sys.path:
+    sys.path.insert(0, SCALEDOWN_ROOT)
+
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.app.routes.analysis import router as analysis_router
-
-# Load .env from project root
+# Load .env from project root before importing routes/services.
 load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+
+from backend.app.routes.analysis import router as analysis_router
 
 logging.basicConfig(
     level=logging.INFO,

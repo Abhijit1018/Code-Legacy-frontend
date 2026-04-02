@@ -80,20 +80,18 @@ class TranslationValidator:
             result.errors.append("Empty or whitespace-only code")
             return result
 
-        handler = {
-            "python": self._validate_python,
-            "go": self._validate_go,
-        }.get(target_language.lower())
-
-        if handler is None:
+        lang = target_language.lower()
+        if lang == "python":
+            return self._validate_python(code, file_path, result)
+        elif lang == "go":
+            return self._validate_go(code, file_path, result)
+        else:
             # No validator for this language — pass by default
             result.passed = True
             result.warnings.append(
                 f"No validator available for {target_language}"
             )
             return result
-
-        return handler(code, file_path, result)
 
     def build_fix_prompt(
         self,
@@ -168,7 +166,7 @@ class TranslationValidator:
             if proc.returncode != 0:
                 errors = [
                     line for line in proc.stdout.splitlines()
-                    if ": error:" in line
+                    if ": error:" in line  # type: ignore[operator]
                 ]
                 return errors if errors else [proc.stdout[:500]]
         except FileNotFoundError:
@@ -210,7 +208,7 @@ class TranslationValidator:
 
             if proc.returncode != 0:
                 errors = proc.stderr.strip().splitlines()
-                result.errors.extend(errors[:10])  # Cap at 10 errors
+                result.errors.extend(errors[:10])  # Cap at 10 errors  # type: ignore[index]
                 return result
 
             result.passed = True

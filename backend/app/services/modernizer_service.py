@@ -33,6 +33,7 @@ class ModernizerService:
     """
 
     def __init__(self):
+        # Keep startup snapshots for diagnostics; fresh values are read per request.
         self._scaledown_key = os.getenv("SCALEDOWN_API_KEY", "")
         self._openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
 
@@ -132,9 +133,18 @@ class ModernizerService:
         remove_comments: bool = True,
         remove_tests: bool = True,
     ) -> CodeGenerator:
+        scaledown_key = os.getenv("SCALEDOWN_API_KEY", self._scaledown_key)
+        openrouter_key = os.getenv("OPENROUTER_API_KEY", self._openrouter_key)
+
+        if not openrouter_key:
+            raise ValueError(
+                "OPENROUTER_API_KEY is not set. Add it to .env at the project root "
+                "and restart the backend."
+            )
+
         return CodeGenerator(
-            scaledown_api_key=self._scaledown_key,
-            openrouter_api_key=self._openrouter_key,
+            scaledown_api_key=scaledown_key,
+            openrouter_api_key=openrouter_key,
             compression_rate=compression_rate,
             llm_model=llm_model,
             temperature=temperature,
