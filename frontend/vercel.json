@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://code-legacy.onrender.com/api/$1"
+    },
+    {
+      "source": "/health",
+      "destination": "https://code-legacy.onrender.com/health"
+    }
+  ]
+}
