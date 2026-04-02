@@ -56,6 +56,15 @@ app.add_middleware(
 app.include_router(analysis_router, prefix="/api")
 
 
-@app.get("/health")
+@app.get("/")
+async def root():
+    return {
+        "status": "ok",
+        "service": "Legacy Modernizer API",
+        "docs": "/docs",
+    }
+
+
+@app.api_route("/health", methods=["GET", "HEAD"])
 async def health():
     return {"status": "ok"}
